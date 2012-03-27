@@ -70,6 +70,16 @@ void handleClient(int sockCli);
  */
 void sigchld (int sig);
 
+/**
+ * Function to try to get root privilege if possible.
+ */
+void try_get_privilege();
+
+/**
+ * Function to drop root privilege if any.
+ */
+void drop_all_privilege();
+
 
 
 int main ( int argc, char* argv[] ) {
@@ -110,6 +120,14 @@ int main ( int argc, char* argv[] ) {
 		goto exit_failure;
 	}
 
+	/**
+	 * To bind our socket, we might need to have root privileges if
+	 * port <= 1024.
+	 * We try to get root privilege in case our executable has the
+	 * suid flag on.
+	 */
+	try_get_privilege();
+
 	/** We test each socket configuration until one succeed */
 	for(rp=result; rp!=NULL;rp=rp->ai_next) {
 
@@ -147,6 +165,8 @@ int main ( int argc, char* argv[] ) {
 		}
 
 		/* we binded successfully */
+		/* now that we have bound, we can drop all privileges */
+		drop_all_privilege();
 		break;
 	}
 	/* free the result linked list allocated by the
@@ -329,5 +349,47 @@ void sigchld (int sig)
 	 * block if a child was cleaned up in another part of the program.
 	 */
 	while (waitpid(-1, NULL, WNOHANG) > 0);
+}
+
+void try_get_privilege()
+{
+	int err=0;
+	uid_t ruid,euid;
+
+	ruid=getuid();
+	euid=geteuid();
+
+	/* If we're not root and we can be root */
+	if(ruid != 0 && euid == 0)
+	{
+		printf("getting root privileges\n");
+		err=setuid(0); /* effectively get root privilege */
+		if(err) perror("seteuid");
+	}
+}
+
+
+void drop_all_privilege()
+{
+	int err=0;
+
+	/* We must be root first to drop privileges */
+	try_get_privilege();
+
+	if(getuid() == 0)
+	{
+		/**
+		 * We drop all privileges we can by dropping to daemon(uid=1,gid=1) privileges.
+		 * This way, there will be no way back.
+		 */
+
+		printf("dropping root privileges\n");
+
+		err |= setgid(1);
+		err |= setegid(1);
+		err |= setuid(1);
+		err |= seteuid(1);
+		if(err) fprintf(stderr,"drop privilege failed");
+	}
 }
 
