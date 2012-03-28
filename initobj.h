@@ -33,9 +33,9 @@ obj* allocObj(void) {
 		t[i].jj=htonl((i+1)*10+2);
 
 		/* We cast without implicit binary conversion and then convert to network endianness */
-		uint64_t tmp;
-		*(double*)&tmp=(double)0.2345+(i+1)*10;
-		t[i].dd=htonll(tmp);
+		union double2uint64 tmp;
+		tmp.d=(double)0.2345+(i+1)*10;
+		t[i].dd=htonll(tmp.u);
 
 		t[i].iqt=0;
 	}

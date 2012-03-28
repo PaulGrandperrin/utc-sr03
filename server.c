@@ -288,10 +288,9 @@ void handleClient(int sockCli)
 			return;
 
 		//We convert from network endianness and then cast without implicit binary convertion
-			uint64_t tmp=htonll(buf.dd);
-			double tmp2=*(double*)(&tmp);
-
-			printf("\"%s\", \"%s\", %d, %d, %f, %d\n",buf.a,buf.b,ntohl(buf.ii),ntohl(buf.jj),tmp2,buf.iqt);
+		union double2uint64 tmp;
+		tmp.u=htonll(buf.dd);
+		printf("\"%s\", \"%s\", %d, %d, %f, %d\n",buf.a,buf.b,ntohl(buf.ii),ntohl(buf.jj),tmp.d,buf.iqt);
 
 	} while(buf.iqt!=-1);
 

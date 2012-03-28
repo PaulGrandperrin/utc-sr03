@@ -31,8 +31,7 @@
 /**
  * Our object structure
  */
-typedef struct
-{
+typedef struct {
 	char a[12];
 	char b[24];
 	uint32_t ii;
@@ -41,6 +40,10 @@ typedef struct
 	char iqt;
 } obj;
 
+union double2uint64 {
+	uint64_t u;
+	double d;
+};
 
 /**
  * As there isn't any standard fonction to convert 64 bits numbers
