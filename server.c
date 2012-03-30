@@ -365,6 +365,13 @@ void handleClient(int sockCli, int sandbox_flag)
 	 */
 
 	obj buf;
+	int nb_obj;
+
+	if(read(sockCli,&buf, rcdsize)!=rcdsize)
+		return;
+
+	nb_obj=ntohl(buf.ii);
+
 	do {
 
 		if(read(sockCli,&buf, rcdsize)!=rcdsize)
@@ -375,7 +382,8 @@ void handleClient(int sockCli, int sandbox_flag)
 		tmp.u=htonll(buf.dd);
 		printf("\"%s\", \"%s\", %d, %d, %f, %d\n",buf.a,buf.b,ntohl(buf.ii),ntohl(buf.jj),tmp.d,buf.iqt);
 
-	} while(buf.iqt!=-1);
+		nb_obj--;
+	} while(buf.iqt!=-1 && nb_obj != 0);
 
 	err=write(sockCli,"a",1);
 	if(err < 0)

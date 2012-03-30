@@ -24,9 +24,17 @@
 
 obj* allocObj(void) {
 
-	obj* t=malloc(TABLEN*sizeof(obj));
+	obj* t=malloc((TABLEN+1)*sizeof(obj));
 
-	for(int i=0;i<TABLEN;++i) {
+	snprintf(t[0].a,12," ");
+	snprintf(t[0].b,24," ");
+	t[0].ii=htonl(TABLEN);
+	t[0].jj=htonl(0);
+	t[0].dd=0;
+
+	t[0].iqt=0;
+
+	for(int i=1;i<(TABLEN+1);++i) {
 		snprintf(t[i].a,12,"indent_o%d",i+1);
 		snprintf(t[i].b,24,"description_o%d",i+1);
 		t[i].ii=htonl((i+1)*10+1);

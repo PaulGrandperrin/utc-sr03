@@ -113,8 +113,8 @@ int main ( int argc, char* argv[] ) {
 	 */
 
 	obj* tabObj=allocObj();
-	for(int i=0; i<TABLEN; ++i) {
-		tabObj[i].iqt=(i==TABLEN-1)?-1:0;
+	for(int i=0; i<(TABLEN+1); ++i) {
+		tabObj[i].iqt=(i==TABLEN)?-1:0;
 		send(sock,(void *) &tabObj[i],sizeof(obj),0);
 	}
 	freeObj(tabObj);
