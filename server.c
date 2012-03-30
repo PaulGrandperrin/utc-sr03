@@ -46,14 +46,19 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h> /* memset */
-
 #include <signal.h>
 #include <errno.h>
 #include <netdb.h> /* getnameinfo & getaddrinfo */
+#include <fcntl.h> /* open flags */
+
+#ifdef __linux__
+#include <sys/prctl.h> /* prctl to activate SECCOMP sandboxing */
+#endif
 
 #include <sys/socket.h>
 #include <sys/types.h> /* historical BSD compatibility */
 #include <sys/wait.h> /* waitpid */
+#include <sys/stat.h> /* umask open */
 
 /* include our architecture independant object structure */
 #include "defobj.h"
@@ -62,7 +67,12 @@
  * Function launched for each client in a
  * new process with a fork().
  */
-void handleClient(int sockCli);
+void handleClient(int sockCli, int sandbox_flag);
+
+/**
+ * Set up the SIGCHLD signal handler.
+ */
+void register_sigchld_handler();
 
 /**
  * Signal handler which gracefully kills
@@ -80,15 +90,61 @@ void try_get_privilege();
  */
 void drop_all_privilege();
 
+/**
+ * Function to fork off in background.
+ */
+void daemonize();
 
+/**
+ * Chroot the process in an empty temporary directory.
+ */
+void chrootme();
+
+/**
+ * Sandbox the process using SECCOMP
+ */
+void sandboxme();
+
+void print_usage()
+{
+	fprintf(stderr,
+"Error: Need at least one argument.\n\
+Usage: server service/port [-d] [-c] [-s]\n\
+\t-d   daemonize\n\
+\t-c   chroot\n\
+\t-s   use sandboxing with SECCOMP\n");
+}
 
 int main ( int argc, char* argv[] ) {
 
-	if (argc != 2) {
-		fprintf(stderr,
-				"Incorrect number of arguments\n\
-				Usage: server service/port\n");
+	int daemonize_flag=0;
+	int chroot_flag=0;
+	int sandbox_flag=0;
+	char* protocol;
+
+	if (argc < 2) {
+		print_usage();
 		goto exit_failure;
+	}
+	else
+		protocol=argv[1];
+
+	int opt;
+	while ((opt = getopt(argc, argv, "cds")) != -1) {
+		switch (opt) {
+			case 'd':
+				daemonize_flag = 1;
+				break;
+			case 'c':
+				chroot_flag = 1;
+				break;
+			case 's':
+				sandbox_flag = 1;
+				break;
+			default:
+				print_usage();
+				goto exit_failure;
+		}
 	}
 
 	/* server and client sockets */
@@ -114,7 +170,7 @@ int main ( int argc, char* argv[] ) {
 	 * satisfy our constraints.
 	 */
 	struct addrinfo *result, *rp;
-	err=getaddrinfo(NULL,argv[1], &hints, &result);
+	err=getaddrinfo(NULL,protocol, &hints, &result);
 	if(err) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(err));
 		goto exit_failure;
@@ -165,8 +221,6 @@ int main ( int argc, char* argv[] ) {
 		}
 
 		/* we binded successfully */
-		/* now that we have bound, we can drop all privileges */
-		drop_all_privilege();
 		break;
 	}
 	/* free the result linked list allocated by the
@@ -186,6 +240,23 @@ int main ( int argc, char* argv[] ) {
 	 */
 	err=listen ( sockServ, SOMAXCONN);
 	if(err){perror("listen");goto close_socket;}
+
+	/**
+	 * If we've been asked to fork of in the background, do it
+	 */
+	if(daemonize_flag)
+		daemonize();
+
+	if(chroot_flag)
+		chrootme();
+
+	/* now that we have bound and chrooted, we can drop all privileges */
+	drop_all_privilege();
+
+	/**
+	 * Register the SIGCHLD signal handler.
+	 */
+	register_sigchld_handler();
 
 	/**
 	 * This is the main loop which accept new connections
@@ -212,12 +283,13 @@ int main ( int argc, char* argv[] ) {
 		/**
 		 * We fork
 		 */
-		int pid=fork();
+		pid_t pid=fork();
 		if(pid < 0) perror("fork");
 
 		if(pid==0) { /** Child's path */
 			close(sockServ); //Probably useless?
-			handleClient(sockCli);
+
+			handleClient(sockCli,sandbox_flag);
 			close(sockCli);
 
 			exit(EXIT_SUCCESS);
@@ -239,7 +311,7 @@ int main ( int argc, char* argv[] ) {
 	return EXIT_FAILURE;
 }
 
-void handleClient(int sockCli)
+void handleClient(int sockCli, int sandbox_flag)
 {
 	char protobuf[255];
 	char namebuf[255];
@@ -269,22 +341,33 @@ void handleClient(int sockCli)
 		}
 	}
 
+
 	/**
 	 * FIXME
 	 * RANDOM SEND AND RECEIVE STUFF FOR THE MOMENT
 	 */
 
+	int rcdsize=sizeof(obj);
+	err=setsockopt(sockCli, SOL_SOCKET, SO_RCVLOWAT, &rcdsize,sizeof(rcdsize));
+	if(err) {
+		perror("setsockopt(SO_RCVLOWAT) failed");
+		return;
+	}
+
+	if(sandbox_flag)
+		sandboxme();
+
+	/**
+	 * From here we can't use recv and send anymore because of
+	 * the potential sandboxing restricting use to use read, write,
+	 * _exit and sigreturn syscalls.
+	 * See PRCTL(2) for more informations.
+	 */
+
 	obj buf;
 	do {
 
-		int rcdsize=sizeof(obj);
-		err=setsockopt(sockCli, SOL_SOCKET, SO_RCVLOWAT, &rcdsize,sizeof(rcdsize));
-		if(err) {
-			perror("setsockopt(SO_RCVLOWAT) failed");
-			return;
-		}
-
-		if(recv(sockCli,&buf, rcdsize,0)!=rcdsize)
+		if(read(sockCli,&buf, rcdsize)!=rcdsize)
 			return;
 
 		//We convert from network endianness and then cast without implicit binary convertion
@@ -294,14 +377,18 @@ void handleClient(int sockCli)
 
 	} while(buf.iqt!=-1);
 
-	send(sockCli,"a",1,0);
+	err=write(sockCli,"a",1);
+	if(err < 0)
+		perror("write");
+
 	printf("Bye\n\n");
 }
+
 
 /**
  * Set up the SIGCHLD signal handler.
  */
-void set_sigaction()
+void register_sigchld_handler()
 {
 
 	struct sigaction act;
@@ -390,5 +477,109 @@ void drop_all_privilege()
 		err |= seteuid(1);
 		if(err) fprintf(stderr,"drop privilege failed");
 	}
+
+}
+
+void daemonize()
+{
+	printf("forking off in background\n");
+	pid_t pid,sid;
+	int err;
+
+	pid = fork();
+	if (pid < 0) {
+		perror("fork");
+		return;
+	}
+
+	if(pid > 0) /* Father path */
+	{
+		_exit(EXIT_SUCCESS);
+	}
+
+	/* Children path */
+
+	umask(0);
+
+	/**
+	 * Put the process in a new session ID and
+	 * detach it from the controlling tty.
+	 */
+	sid = setsid();
+	if(sid < 0) {
+		perror("setsid");
+		return;
+	}
+
+	/* close all descriptors */
+	//for (int i=sysconf(_SC_OPEN_MAX);i>=0;--i) close(i);
+
+	close(0);
+	close(1);
+	close(2);
+	/* TODO check return value */
+	err=open("/dev/null",O_RDWR); /* open stdin */
+	err|=dup(0); /* stdout */
+	err|=dup(0); /* stderr */
+
+	if(err)
+		perror("open/dup");
+}
+
+void chrootme()
+{
+	int err;
+	/**
+	 * 	TODO correctly deal with return values
+	 */
+
+	/**
+	 * We must be root to use the chroot syscall.
+	 */
+	try_get_privilege();
+	if(getuid() != 0)
+		return;
+
+	char* tmpdir=getenv("TMPDIR");
+	if(tmpdir == NULL)
+		tmpdir="/tmp";
+
+	err = chdir(tmpdir);
+	if(err) {
+		perror("chdir");
+		return;
+	}
+
+	char tmpchroot[]="server-XXXXXX";
+	char *strerr;
+	strerr=mkdtemp(tmpchroot);
+	if(strerr == NULL) {
+		perror("mkdtemp");
+		return;
+	}
+
+	printf("chrooting in %s/%s\n",tmpdir,tmpchroot);
+	err =  chroot(tmpchroot);
+	if(err) {
+		perror("chroot");
+		return;
+	}
+
+	err = chdir("/");
+	if(err) {
+		perror("chdir");
+		return;
+	}
+}
+
+void sandboxme()
+{
+#if defined __linux__ &&  PR_SET_SECCOMP
+	int err;
+
+	err=prctl(PR_SET_SECCOMP,1);
+	if (err < 0)
+		perror("prctl(PR_SET_SECCOMP,1)");
+#endif
 }
 
