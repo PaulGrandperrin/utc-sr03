@@ -44,7 +44,7 @@ int main ( int argc, char* argv[] ) {
 		fprintf(stderr,
 				"Incorrect number of arguments\n\
 				Usage: client name/address service/port\n");
-		goto exit_failure;
+		goto exitFailure;
 	}
 
 	/* Connection socket */
@@ -74,7 +74,7 @@ int main ( int argc, char* argv[] ) {
 	err=getaddrinfo(argv[1],argv[2], &hints, &result);
 	if(err) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(err));
-		goto exit_failure;
+		goto exitFailure;
 	}
 
 	/** We test each socket configuration until one succeed */
@@ -104,7 +104,7 @@ int main ( int argc, char* argv[] ) {
 	/* we didn't connected successfully */
 	if (rp == NULL) {
 		fprintf(stderr, "Could not connect\n");
-		goto exit_failure;
+		goto exitFailure;
 	}
 
 	/**
@@ -128,6 +128,6 @@ int main ( int argc, char* argv[] ) {
 
 	return EXIT_SUCCESS;
 
-	exit_failure:
+	exitFailure:
 	return EXIT_FAILURE;
 }

@@ -67,28 +67,28 @@
  * Function launched for each client in a
  * new process with a fork().
  */
-void handleClient(int sockCli, int sandbox_flag);
+void handleClient(int sockCli, int sandboxFlag);
 
 /**
  * Set up the SIGCHLD signal handler.
  */
-void register_sigchld_handler();
+void registerSigchldHandler();
 
 /**
  * Signal handler which gracefully kills
  * client processes
  */
-void sigchld (int sig);
+void sigChld (int sig);
 
 /**
  * Function to try to get root privilege if possible.
  */
-void try_get_privilege();
+void tryGetPrivilege();
 
 /**
  * Function to drop root privilege if any.
  */
-void drop_all_privilege();
+void dropAllPrivilege();
 
 /**
  * Function to fork off in background.
@@ -98,14 +98,14 @@ void daemonize();
 /**
  * Chroot the process in an empty temporary directory.
  */
-void chrootme();
+void chrootMe();
 
 /**
  * Sandbox the process using SECCOMP
  */
-void sandboxme();
+void sandboxMe();
 
-void print_usage()
+void printUsage()
 {
 	fprintf(stderr,
 "Error: Need at least one argument.\n\
@@ -117,14 +117,14 @@ Usage: server service/port [-d] [-c] [-s]\n\
 
 int main ( int argc, char* argv[] ) {
 
-	int daemonize_flag=0;
-	int chroot_flag=0;
-	int sandbox_flag=0;
+	int daemonizeFlag=0;
+	int chrootFlag=0;
+	int sandboxFlag=0;
 	char* protocol;
 
 	if (argc < 2) {
-		print_usage();
-		goto exit_failure;
+		printUsage();
+		goto exitFailure;
 	}
 	else
 		protocol=argv[1];
@@ -133,17 +133,17 @@ int main ( int argc, char* argv[] ) {
 	while ((opt = getopt(argc, argv, "cds")) != -1) {
 		switch (opt) {
 			case 'd':
-				daemonize_flag = 1;
+				daemonizeFlag = 1;
 				break;
 			case 'c':
-				chroot_flag = 1;
+				chrootFlag = 1;
 				break;
 			case 's':
-				sandbox_flag = 1;
+				sandboxFlag = 1;
 				break;
 			default:
-				print_usage();
-				goto exit_failure;
+				printUsage();
+				goto exitFailure;
 		}
 	}
 
@@ -173,7 +173,7 @@ int main ( int argc, char* argv[] ) {
 	err=getaddrinfo(NULL,protocol, &hints, &result);
 	if(err) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(err));
-		goto exit_failure;
+		goto exitFailure;
 	}
 
 	/**
@@ -182,7 +182,7 @@ int main ( int argc, char* argv[] ) {
 	 * We try to get root privilege in case our executable has the
 	 * suid flag on.
 	 */
-	try_get_privilege();
+	tryGetPrivilege();
 
 	/** We test each socket configuration until one succeed */
 	for(rp=result; rp!=NULL;rp=rp->ai_next) {
@@ -231,7 +231,7 @@ int main ( int argc, char* argv[] ) {
 	/* we didn't connected successfully */
 	if (rp == NULL) {
 		fprintf(stderr, "Could not connect\n");
-		goto exit_failure;
+		goto exitFailure;
 	}
 
 	/**
@@ -239,24 +239,24 @@ int main ( int argc, char* argv[] ) {
 	 * NOTE this is the default behavior of most Unix daemons.
 	 */
 	err=listen ( sockServ, SOMAXCONN);
-	if(err){perror("listen");goto close_socket;}
+	if(err){perror("listen");goto closeSocket;}
 
 	/**
 	 * If we've been asked to fork of in the background, do it
 	 */
-	if(daemonize_flag)
+	if(daemonizeFlag)
 		daemonize();
 
-	if(chroot_flag)
-		chrootme();
+	if(chrootFlag)
+		chrootMe();
 
 	/* now that we have bound and chrooted, we can drop all privileges */
-	drop_all_privilege();
+	dropAllPrivilege();
 
 	/**
 	 * Register the SIGCHLD signal handler.
 	 */
-	register_sigchld_handler();
+	registerSigchldHandler();
 
 	/**
 	 * This is the main loop which accept new connections
@@ -289,7 +289,7 @@ int main ( int argc, char* argv[] ) {
 		if(pid==0) { /** Child's path */
 			close(sockServ); //Probably useless?
 
-			handleClient(sockCli,sandbox_flag);
+			handleClient(sockCli,sandboxFlag);
 			close(sockCli);
 
 			exit(EXIT_SUCCESS);
@@ -304,40 +304,40 @@ int main ( int argc, char* argv[] ) {
 	close(sockServ);
 	return EXIT_SUCCESS;
 
-	close_socket:
+	closeSocket:
 	close ( sockServ );
 
-	exit_failure:
+	exitFailure:
 	return EXIT_FAILURE;
 }
 
-void handleClient(int sockCli, int sandbox_flag)
+void handleClient(int sockCli, int sandboxFlag)
 {
-	char protobuf[255];
-	char namebuf[255];
+	char protoBuf[255];
+	char nameBuf[255];
 	/* size could have been INET6_ADDRSTRLEN if we
 	 * wanted to display only IPv6 numeric value
 	 */
 
 	struct sockaddr_storage ss;
-	socklen_t ss_len=sizeof(ss);
+	socklen_t ssLen=sizeof(ss);
 
 	/**
 	 * We get and display client socket informations.
 	 */
 	int err;
-	err=getpeername(sockCli,(struct sockaddr*)&ss,&ss_len);
+	err=getpeername(sockCli,(struct sockaddr*)&ss,&ssLen);
 	if(err)
 		perror("getnameinfo");
 	else {
-		err=getnameinfo((struct sockaddr *)&ss, ss_len,
-			namebuf, sizeof(namebuf), protobuf, sizeof(protobuf), 0);
+		err=getnameinfo((struct sockaddr *)&ss, ssLen,
+			nameBuf, sizeof(nameBuf), protoBuf, sizeof(protoBuf), 0);
 
 		if(err)
 			perror("getnameinfo");
 		else {
-			printf("Client name/address is %s\n", namebuf);
-			printf("Client protocol/port is %s\n", protobuf);
+			printf("Client name/address is %s\n", nameBuf);
+			printf("Client protocol/port is %s\n", protoBuf);
 		}
 	}
 
@@ -347,15 +347,15 @@ void handleClient(int sockCli, int sandbox_flag)
 	 * RANDOM SEND AND RECEIVE STUFF FOR THE MOMENT
 	 */
 
-	int rcdsize=sizeof(obj);
-	err=setsockopt(sockCli, SOL_SOCKET, SO_RCVLOWAT, &rcdsize,sizeof(rcdsize));
+	int rcdSize=sizeof(obj);
+	err=setsockopt(sockCli, SOL_SOCKET, SO_RCVLOWAT, &rcdSize,sizeof(rcdSize));
 	if(err) {
 		perror("setsockopt(SO_RCVLOWAT) failed");
 		return;
 	}
 
-	if(sandbox_flag)
-		sandboxme();
+	if(sandboxFlag)
+		sandboxMe();
 
 	/**
 	 * From here we can't use recv and send anymore because of
@@ -365,16 +365,16 @@ void handleClient(int sockCli, int sandbox_flag)
 	 */
 
 	obj buf;
-	int nb_obj;
+	int nbObj;
 
-	if(read(sockCli,&buf, rcdsize)!=rcdsize)
+	if(read(sockCli,&buf, rcdSize)!=rcdSize)
 		return;
 
-	nb_obj=ntohl(buf.ii);
+	nbObj=ntohl(buf.ii);
 
 	do {
 
-		if(read(sockCli,&buf, rcdsize)!=rcdsize)
+		if(read(sockCli,&buf, rcdSize)!=rcdSize)
 			return;
 
 		//We convert from network endianness and then cast without implicit binary convertion
@@ -382,8 +382,8 @@ void handleClient(int sockCli, int sandbox_flag)
 		tmp.u=htonll(buf.dd);
 		printf("\"%s\", \"%s\", %d, %d, %f, %d\n",buf.a,buf.b,ntohl(buf.ii),ntohl(buf.jj),tmp.d,buf.iqt);
 
-		nb_obj--;
-	} while(buf.iqt!=-1 && nb_obj != 0);
+		nbObj--;
+	} while(buf.iqt!=-1 && nbObj != 0);
 
 	err=write(sockCli,"a",1);
 	if(err < 0)
@@ -396,7 +396,7 @@ void handleClient(int sockCli, int sandbox_flag)
 /**
  * Set up the SIGCHLD signal handler.
  */
-void register_sigchld_handler()
+void registerSigchldHandler()
 {
 
 	struct sigaction act;
@@ -422,7 +422,7 @@ void register_sigchld_handler()
 
 	//act.sa_flags|=SA_NOCLDWAIT; // no zombie please
 
-	act.sa_handler = sigchld;
+	act.sa_handler = sigChld;
 
 	if (sigaction(SIGCHLD, &act, NULL)) {
 		perror ("sigaction");
@@ -433,7 +433,7 @@ void register_sigchld_handler()
 /**
  * The SIGCHLD handler.
  */
-void sigchld (int sig)
+void sigChld (int sig)
 {
 	(void) sig;
 
@@ -445,7 +445,7 @@ void sigchld (int sig)
 	while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-void try_get_privilege()
+void tryGetPrivilege()
 {
 	int err=0;
 	uid_t ruid,euid;
@@ -463,12 +463,12 @@ void try_get_privilege()
 }
 
 
-void drop_all_privilege()
+void dropAllPrivilege()
 {
 	int err=0;
 
 	/* We must be root first to drop privileges */
-	try_get_privilege();
+	tryGetPrivilege();
 
 	if(getuid() == 0)
 	{
@@ -534,7 +534,7 @@ void daemonize()
 		perror("open/dup");
 }
 
-void chrootme()
+void chrootMe()
 {
 	int err;
 	/**
@@ -544,30 +544,30 @@ void chrootme()
 	/**
 	 * We must be root to use the chroot syscall.
 	 */
-	try_get_privilege();
+	tryGetPrivilege();
 	if(getuid() != 0)
 		return;
 
-	char* tmpdir=getenv("TMPDIR");
-	if(tmpdir == NULL)
-		tmpdir="/tmp";
+	char* tmpDir=getenv("TMPDIR");
+	if(tmpDir == NULL)
+		tmpDir="/tmp";
 
-	err = chdir(tmpdir);
+	err = chdir(tmpDir);
 	if(err) {
 		perror("chdir");
 		return;
 	}
 
-	char tmpchroot[]="server-XXXXXX";
-	char *strerr;
-	strerr=mkdtemp(tmpchroot);
-	if(strerr == NULL) {
+	char tmpChroot[]="server-XXXXXX";
+	char *strErr;
+	strErr=mkdtemp(tmpChroot);
+	if(strErr == NULL) {
 		perror("mkdtemp");
 		return;
 	}
 
-	printf("chrooting in %s/%s\n",tmpdir,tmpchroot);
-	err =  chroot(tmpchroot);
+	printf("chrooting in %s/%s\n",tmpDir,tmpChroot);
+	err =  chroot(tmpChroot);
 	if(err) {
 		perror("chroot");
 		return;
@@ -580,7 +580,7 @@ void chrootme()
 	}
 }
 
-void sandboxme()
+void sandboxMe()
 {
 #if defined __linux__ &&  PR_SET_SECCOMP
 	int err;
