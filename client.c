@@ -42,8 +42,8 @@ int main ( int argc, char* argv[] ) {
 
 	if (argc != 3) {
 		fprintf(stderr,
-				"Incorrect number of arguments\n\
-				Usage: client name/address service/port\n");
+"Incorrect number of arguments.\n\
+Usage: client name/address service/port\n");
 		goto exitFailure;
 	}
 
