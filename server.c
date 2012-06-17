@@ -67,7 +67,7 @@
  * Function launched for each client in a
  * new process with a fork().
  */
-void handleClient(int sockCli, int sandboxFlag);
+void handleClient(int sockCli, int sandboxFlag, int muteFlag);
 
 /**
  * Set up the SIGCHLD signal handler.
@@ -96,6 +96,11 @@ void dropAllPrivilege();
 void daemonize();
 
 /**
+ * Close standard streams, ie: stdin, stdout and stderr.
+ */
+void closeStandardStreams();
+
+/**
  * Chroot the process in an empty temporary directory.
  */
 void chrootMe();
@@ -109,10 +114,11 @@ void printUsage()
 {
 	fprintf(stderr,
 "Error: Need at least one argument.\n\
-Usage: server service/port [-d] [-c] [-s]\n\
+Usage: server service/port [-d] [-c] [-s] [-m]\n\
 \t-d   daemonize\n\
 \t-c   chroot\n\
-\t-s   use sandboxing with SECCOMP\n");
+\t-s   use sandboxing with SECCOMP\n\
+\t-m   mute standard streams of child processes, ie: stdin, stdout and stderr (useful with SECCOMP)\n");
 }
 
 int main ( int argc, char* argv[] ) {
@@ -120,6 +126,7 @@ int main ( int argc, char* argv[] ) {
 	int daemonizeFlag=0;
 	int chrootFlag=0;
 	int sandboxFlag=0;
+	int muteFlag=0;
 	char* protocol;
 
 	if (argc < 2) {
@@ -130,7 +137,7 @@ int main ( int argc, char* argv[] ) {
 		protocol=argv[1];
 
 	int opt;
-	while ((opt = getopt(argc, argv, "cds")) != -1) {
+	while ((opt = getopt(argc, argv, "cdsm")) != -1) {
 		switch (opt) {
 			case 'd':
 				daemonizeFlag = 1;
@@ -140,6 +147,9 @@ int main ( int argc, char* argv[] ) {
 				break;
 			case 's':
 				sandboxFlag = 1;
+				break;
+			case 'm':
+				muteFlag = 1;
 				break;
 			default:
 				printUsage();
@@ -289,7 +299,7 @@ int main ( int argc, char* argv[] ) {
 		if(pid==0) { /** Child's path */
 			close(sockServ); //Probably useless?
 
-			handleClient(sockCli,sandboxFlag);
+			handleClient(sockCli,sandboxFlag,muteFlag);
 			close(sockCli);
 
 			exit(EXIT_SUCCESS);
@@ -311,7 +321,7 @@ int main ( int argc, char* argv[] ) {
 	return EXIT_FAILURE;
 }
 
-void handleClient(int sockCli, int sandboxFlag)
+void handleClient(int sockCli, int sandboxFlag, int muteFlag)
 {
 	char protoBuf[255];
 	char nameBuf[255];
@@ -353,6 +363,9 @@ void handleClient(int sockCli, int sandboxFlag)
 		perror("setsockopt(SO_RCVLOWAT) failed");
 		return;
 	}
+
+	if(muteFlag)
+		closeStandardStreams();
 
 	if(sandboxFlag)
 		sandboxMe();
@@ -492,7 +505,6 @@ void daemonize()
 {
 	printf("forking off in background\n");
 	pid_t pid,sid;
-	int err;
 
 	pid = fork();
 	if (pid < 0) {
@@ -519,6 +531,12 @@ void daemonize()
 		return;
 	}
 
+	closeStandardStreams();
+}
+
+void closeStandardStreams()
+{
+	int err;
 	/* close all descriptors */
 	//for (int i=sysconf(_SC_OPEN_MAX);i>=0;--i) close(i);
 
